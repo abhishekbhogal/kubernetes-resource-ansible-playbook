@@ -1,0 +1,58 @@
+- name: Increase resources for K8s pods
+  hosts: your_kubernetes_host
+  gather_facts: no
+  become: yes
+
+  vars:
+    namespace: your_namespace
+    deployment_name: your_deployment_name
+    container_name: your_container_name
+    cpu_limit: "2"
+    memory_limit: "4Gi"
+
+  tasks:
+    - name: Get current pod info
+      k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ namespace }}"
+        name: "{{ deployment_name }}"
+      register: deployment_info
+
+    - name: Increase CPU and memory limits
+      k8s:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ namespace }}"
+        name: "{{ deployment_name }}"
+        definition:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: "{{ container_name }}"
+                    resources:
+                      limits:
+                        cpu: "{{ cpu_limit }}"
+                        memory: "{{ memory_limit }}"
+      when: deployment_info.resources is defined
+
+    - name: Check the pod status
+      k8s_facts:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app={{ deployment_name }}
+      register: pod_facts
+
+    - name: Wait for the pods to be ready
+      k8s_wait:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app={{ deployment_name }}
+        condition: ready
+        timeout: 300
+        pod_count: "{{ pod_facts.podcount }}"
